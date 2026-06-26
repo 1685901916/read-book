@@ -25,6 +25,7 @@ const FONT_OPTIONS = [
   { label: '衬线', value: 'Georgia, "Times New Roman", serif' },
   { label: '无衬线', value: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
 ]
+const DESKTOP_TOOLS_PANEL_QUERY = '(min-width: 1600px)'
 const FS_KEY = 'reader_font_size'
 const FF_KEY = 'reader_font_family'
 
@@ -222,7 +223,7 @@ export default function ReadPage() {
 
   const toggleVocabPanel = useCallback(() => {
     setShowVocab(v => !v)
-    if (typeof window === 'undefined' || !window.matchMedia('(min-width: 1400px)').matches) {
+    if (typeof window === 'undefined' || !window.matchMedia(DESKTOP_TOOLS_PANEL_QUERY).matches) {
       setShowToolsPanel(true)
     }
   }, [])
@@ -253,18 +254,18 @@ export default function ReadPage() {
     <div className="flex flex-col h-screen bg-[#F7F2E9] overflow-hidden">
       {/* Top bar */}
       <header className="h-12 bg-[#F7F2E9]/90 backdrop-blur border-b border-amber-100 flex items-center px-3 sm:px-5 gap-2 sm:gap-4 shrink-0 z-40">
-        <Link href="/" className="text-amber-700 hover:text-amber-900 text-sm transition-colors shrink-0">
+        <Link href="/" className="inline-flex h-11 items-center rounded-full px-2 text-amber-700 hover:text-amber-900 hover:bg-amber-100 text-sm transition-colors shrink-0">
           ← 书架
         </Link>
         <button
           onClick={() => setDrawer(d => (d === 'toc' ? null : 'toc'))}
-          className="text-sm text-amber-700 hover:text-amber-900 transition-colors shrink-0"
+          className="inline-flex h-11 items-center rounded-full px-2 text-sm text-amber-700 hover:text-amber-900 hover:bg-amber-100 transition-colors shrink-0"
         >
           目录
         </button>
         <button
           onClick={() => setDrawer(d => (d === 'bookmarks' ? null : 'bookmarks'))}
-          className="text-sm text-amber-700 hover:text-amber-900 transition-colors shrink-0"
+          className="inline-flex h-11 items-center rounded-full px-2 text-sm text-amber-700 hover:text-amber-900 hover:bg-amber-100 transition-colors shrink-0"
         >
           书签 {(bookmarks?.length ?? 0) > 0 && <span className="text-amber-400">{bookmarks?.length}</span>}
         </button>
@@ -274,7 +275,7 @@ export default function ReadPage() {
               onClick={() => setShowFontMenu(v => !v)}
               title="字体与字号"
               aria-label="字体与字号"
-              className="text-amber-700 hover:text-amber-900 transition-colors text-sm font-semibold px-1"
+              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full px-2 text-amber-700 hover:text-amber-900 hover:bg-amber-100 transition-colors text-sm font-semibold"
             >
               Aa
             </button>
@@ -321,20 +322,20 @@ export default function ReadPage() {
           </div>
         )}
         <span className="text-sm font-semibold text-amber-900 truncate max-w-[28vw] sm:max-w-xs ml-1">{book?.title}</span>
-        <span className="text-xs text-amber-400 hidden min-[1400px]:block">
+        <span className="text-xs text-amber-400 hidden min-[1600px]:block">
           双击单词查意思 · 划选句子拆结构
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={openAnalysisPanel}
-            className="min-[1400px]:hidden text-xs px-3 py-1 rounded-full text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 transition-colors"
+            className="inline-flex h-11 items-center min-[1600px]:hidden text-xs px-3 rounded-full text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 transition-colors"
           >
             分析
           </button>
           <button
             onClick={() => setShowKeyDialog(true)}
             title="配置 API Key"
-            className="text-amber-700 hover:text-amber-900 transition-colors"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-amber-700 hover:text-amber-900 hover:bg-amber-100 transition-colors"
             aria-label="配置 API Key"
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -344,7 +345,7 @@ export default function ReadPage() {
           </button>
           <button
             onClick={toggleVocabPanel}
-            className={`text-xs px-3 py-1 rounded-full transition-colors ${
+            className={`inline-flex h-11 items-center text-xs px-3 rounded-full transition-colors ${
               showVocab
                 ? 'bg-amber-600 text-white hover:bg-amber-700'
                 : 'text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200'
@@ -406,7 +407,7 @@ export default function ReadPage() {
             <button
               onClick={toggleBookmark}
               title={activeBookmarkId ? '取消此处书签' : '把当前位置加入书签'}
-              className="absolute top-3 right-3 z-20 w-9 h-9 flex items-center justify-center rounded-full bg-white/80 hover:bg-white shadow transition-all"
+              className="absolute top-3 right-3 z-20 w-11 h-11 flex items-center justify-center rounded-full bg-white/80 hover:bg-white shadow transition-all"
               aria-label="书签"
             >
               <svg
@@ -426,14 +427,14 @@ export default function ReadPage() {
           )}
         </div>
 
-        {/* 大屏常驻侧栏；Pad 和小屏用浮层，避免压缩 PDF 阅读区。 */}
-        <div className="hidden min-[1400px]:flex w-96 shrink-0 border-l border-amber-100 z-30 flex-col">
+        {/* 超宽桌面才常驻侧栏；Pad/普通笔记本用浮层，避免压缩 PDF 阅读区。 */}
+        <div className="hidden min-[1600px]:flex w-96 shrink-0 border-l border-amber-100 z-30 flex-col">
           {renderDesktopToolsPanel()}
         </div>
       </div>
 
       {showToolsPanel && (
-        <div className="fixed inset-0 z-50 min-[1400px]:hidden">
+        <div className="fixed inset-0 z-50 min-[1600px]:hidden">
           <button
             type="button"
             aria-label="关闭分析面板"
@@ -444,7 +445,7 @@ export default function ReadPage() {
             <div className="h-12 px-4 border-b border-amber-100 bg-[#F7F2E9] flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setShowVocab(false)}
-                className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                className={`h-11 px-3 rounded-full text-sm font-semibold transition-colors ${
                   showVocab
                     ? 'text-amber-700 hover:bg-amber-100'
                     : 'bg-amber-600 text-white'
@@ -454,7 +455,7 @@ export default function ReadPage() {
               </button>
               <button
                 onClick={() => setShowVocab(true)}
-                className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                className={`h-11 px-3 rounded-full text-sm font-semibold transition-colors ${
                   showVocab
                     ? 'bg-amber-600 text-white'
                     : 'text-amber-700 hover:bg-amber-100'
@@ -464,7 +465,7 @@ export default function ReadPage() {
               </button>
               <button
                 onClick={() => setShowToolsPanel(false)}
-                className="ml-auto text-gray-300 hover:text-gray-600 text-xl leading-none px-1 transition-colors"
+                className="ml-auto h-11 w-11 text-gray-300 hover:text-gray-600 text-xl leading-none transition-colors"
                 aria-label="关闭"
               >
                 ×
