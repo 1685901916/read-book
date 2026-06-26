@@ -167,7 +167,10 @@ export default function PdfViewer({
     if (!scroller || typeof window === 'undefined') return
 
     const updateWidth = () => {
-      const next = Math.round(scroller.clientWidth)
+      // Use border-box width for resize invalidation. The PDF itself is still
+      // sized from clientWidth in init(), but scrollbar appearance must not
+      // trigger a destroy/reload loop.
+      const next = Math.round(scroller.offsetWidth || scroller.clientWidth)
       setContainerWidth(prev => (Math.abs(prev - next) > 4 ? next : prev))
     }
 
