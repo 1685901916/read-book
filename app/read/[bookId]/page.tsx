@@ -36,6 +36,7 @@ export default function ReadPage() {
   const [popup, setPopup] = useState<WordPopupState | null>(null)
   const [analyses, setAnalyses] = useState<AnalysisState[]>([])
   const [showVocab, setShowVocab] = useState(false)
+  const [showToolsPanel, setShowToolsPanel] = useState(false)
   const [toc, setToc] = useState<TocItem[]>([])
   const [loc, setLoc] = useState<LocationInfo | null>(null)
   const [drawer, setDrawer] = useState<'toc' | 'bookmarks' | null>(null)
@@ -214,6 +215,31 @@ export default function ReadPage() {
     setPopup(null)
   }, [popup, bookId, book])
 
+  const openAnalysisPanel = useCallback(() => {
+    setShowVocab(false)
+    setShowToolsPanel(true)
+  }, [])
+
+  const toggleVocabPanel = useCallback(() => {
+    setShowVocab(v => !v)
+    if (typeof window === 'undefined' || !window.matchMedia('(min-width: 1400px)').matches) {
+      setShowToolsPanel(true)
+    }
+  }, [])
+
+  const renderDesktopToolsPanel = () => (
+    <>
+      <div className={showVocab ? 'flex-1 min-h-0 border-b border-amber-100' : 'flex-1 min-h-0'}>
+        <AnalysisPanel items={analyses} onClear={() => setAnalyses([])} />
+      </div>
+      {showVocab && (
+        <div className="flex-1 min-h-0">
+          <VocabPanel onClose={() => setShowVocab(false)} />
+        </div>
+      )}
+    </>
+  )
+
   if (notFound) {
     return (
       <main className="min-h-screen bg-[#F7F2E9] flex flex-col items-center justify-center gap-4">
@@ -226,7 +252,7 @@ export default function ReadPage() {
   return (
     <div className="flex flex-col h-screen bg-[#F7F2E9] overflow-hidden">
       {/* Top bar */}
-      <header className="h-12 bg-[#F7F2E9]/90 backdrop-blur border-b border-amber-100 flex items-center px-5 gap-4 shrink-0 z-40">
+      <header className="h-12 bg-[#F7F2E9]/90 backdrop-blur border-b border-amber-100 flex items-center px-3 sm:px-5 gap-2 sm:gap-4 shrink-0 z-40">
         <Link href="/" className="text-amber-700 hover:text-amber-900 text-sm transition-colors shrink-0">
           ← 书架
         </Link>
@@ -294,11 +320,17 @@ export default function ReadPage() {
             )}
           </div>
         )}
-        <span className="text-sm font-semibold text-amber-900 truncate max-w-xs ml-1">{book?.title}</span>
-        <span className="text-xs text-amber-400 hidden lg:block">
+        <span className="text-sm font-semibold text-amber-900 truncate max-w-[28vw] sm:max-w-xs ml-1">{book?.title}</span>
+        <span className="text-xs text-amber-400 hidden min-[1400px]:block">
           双击单词查意思 · 划选句子拆结构
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={openAnalysisPanel}
+            className="min-[1400px]:hidden text-xs px-3 py-1 rounded-full text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 transition-colors"
+          >
+            分析
+          </button>
           <button
             onClick={() => setShowKeyDialog(true)}
             title="配置 API Key"
@@ -311,7 +343,7 @@ export default function ReadPage() {
             </svg>
           </button>
           <button
-            onClick={() => setShowVocab(v => !v)}
+            onClick={toggleVocabPanel}
             className={`text-xs px-3 py-1 rounded-full transition-colors ${
               showVocab
                 ? 'bg-amber-600 text-white hover:bg-amber-700'
@@ -394,18 +426,60 @@ export default function ReadPage() {
           )}
         </div>
 
-        {/* 右侧栏：句子拆解（上）+ 生词本（下，可切换） */}
-        <div className="w-96 shrink-0 border-l border-amber-100 z-30 flex flex-col">
-          <div className={showVocab ? 'flex-1 min-h-0 border-b border-amber-100' : 'flex-1 min-h-0'}>
-            <AnalysisPanel items={analyses} onClear={() => setAnalyses([])} />
-          </div>
-          {showVocab && (
-            <div className="flex-1 min-h-0">
-              <VocabPanel onClose={() => setShowVocab(false)} />
-            </div>
-          )}
+        {/* 大屏常驻侧栏；Pad 和小屏用浮层，避免压缩 PDF 阅读区。 */}
+        <div className="hidden min-[1400px]:flex w-96 shrink-0 border-l border-amber-100 z-30 flex-col">
+          {renderDesktopToolsPanel()}
         </div>
       </div>
+
+      {showToolsPanel && (
+        <div className="fixed inset-0 z-50 min-[1400px]:hidden">
+          <button
+            type="button"
+            aria-label="关闭分析面板"
+            onClick={() => setShowToolsPanel(false)}
+            className="absolute inset-0 bg-black/20 animate-[drawerFadeIn_150ms_ease-out]"
+          />
+          <aside className="absolute right-0 top-0 bottom-0 w-[88vw] max-w-[420px] bg-white shadow-2xl border-l border-amber-100 flex flex-col">
+            <div className="h-12 px-4 border-b border-amber-100 bg-[#F7F2E9] flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowVocab(false)}
+                className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                  showVocab
+                    ? 'text-amber-700 hover:bg-amber-100'
+                    : 'bg-amber-600 text-white'
+                }`}
+              >
+                分析
+              </button>
+              <button
+                onClick={() => setShowVocab(true)}
+                className={`px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                  showVocab
+                    ? 'bg-amber-600 text-white'
+                    : 'text-amber-700 hover:bg-amber-100'
+                }`}
+              >
+                生词 {wordCount > 0 && wordCount}
+              </button>
+              <button
+                onClick={() => setShowToolsPanel(false)}
+                className="ml-auto text-gray-300 hover:text-gray-600 text-xl leading-none px-1 transition-colors"
+                aria-label="关闭"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 flex flex-col">
+              {showVocab ? (
+                <VocabPanel onClose={() => setShowVocab(false)} />
+              ) : (
+                <AnalysisPanel items={analyses} onClear={() => setAnalyses([])} />
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
 
       {popup && (
         <WordPopup

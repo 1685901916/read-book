@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TocItem } from '@/types'
 import { loadPdf, TextLayer, type PdfDoc } from '@/lib/pdfjs'
 import type { ViewerApi, LocationInfo } from './EpubViewer'
@@ -18,6 +18,26 @@ interface PdfViewerProps {
   onRelocated?: (cfi: string, progress: number | null) => void
   onLocationInfo?: (info: LocationInfo) => void
   onToc?: (toc: TocItem[]) => void
+}
+
+const MAX_OUTPUT_SCALE = 2
+const MAX_CANVAS_PIXELS = 8_000_000
+
+function getSafeOutputScale(width: number, height: number) {
+  let outputScale = Math.min(window.devicePixelRatio || 1, MAX_OUTPUT_SCALE)
+  const pixels = width * height * outputScale * outputScale
+  if (pixels > MAX_CANVAS_PIXELS) {
+    outputScale = Math.sqrt(MAX_CANVAS_PIXELS / Math.max(width * height, 1))
+  }
+  return Math.max(0.2, outputScale)
+}
+
+function pageErrorNode(doc: Document, page: number) {
+  const el = doc.createElement('div')
+  el.dataset.pdfError = 'true'
+  el.className = 'h-full flex items-center justify-center px-8 text-center text-sm text-amber-700'
+  el.textContent = `第 ${page} 页渲染失败。请尝试刷新，或换一个浏览器/降低页面缩放后重试。`
+  return el
 }
 
 // 解析续读/书签定位字符串 `page:N` → 页码
@@ -125,6 +145,9 @@ export default function PdfViewer({
 }: PdfViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pagesRef = useRef<HTMLDivElement>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
+  const lastPageRef = useRef(1)
   const savedWordsRef = useRef<Set<string>>(new Set(savedWords ?? []))
   // 已渲染页面的文字层，供生词高亮更新时复用
   const textLayersRef = useRef<Map<number, HTMLElement>>(new Map())
@@ -135,6 +158,31 @@ export default function PdfViewer({
     cbRef.current = { onWordSelect, onSentenceSelect, onRelocated, onLocationInfo, onToc }
   })
 
+  useEffect(() => {
+    lastPageRef.current = parsePage(initialLocation) ?? 1
+  }, [data, initialLocation])
+
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (!scroller || typeof window === 'undefined') return
+
+    const updateWidth = () => {
+      const next = Math.round(scroller.clientWidth)
+      setContainerWidth(prev => (Math.abs(prev - next) > 4 ? next : prev))
+    }
+
+    updateWidth()
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth)
+      return () => window.removeEventListener('resize', updateWidth)
+    }
+
+    const ro = new ResizeObserver(updateWidth)
+    ro.observe(scroller)
+    return () => ro.disconnect()
+  }, [])
+
   // 生词表变化时，给已渲染的文字层补高亮
   useEffect(() => {
     savedWordsRef.current = new Set(savedWords ?? [])
@@ -144,10 +192,17 @@ export default function PdfViewer({
   }, [savedWords])
 
   useEffect(() => {
-    if (!scrollRef.current || !pagesRef.current || typeof window === 'undefined' || !data) return
+    if (
+      !scrollRef.current ||
+      !pagesRef.current ||
+      typeof window === 'undefined' ||
+      !data ||
+      !containerWidth
+    ) return
 
     const scroller = scrollRef.current
     const pagesEl = pagesRef.current
+    setLoadError(null)
     let pdf: PdfDoc | null = null
     let cancelled = false
     let io: IntersectionObserver | null = null
@@ -182,6 +237,7 @@ export default function PdfViewer({
     }
 
     const emitLocation = (page: number) => {
+      lastPageRef.current = page
       const [sp, ep] = pctRange(page)
       cbRef.current.onRelocated?.(`page:${page}`, ep)
       cbRef.current.onLocationInfo?.({
@@ -227,12 +283,17 @@ export default function PdfViewer({
         wrapper.style.height = `${Math.floor(viewport.height)}px`
 
         const canvas = document.createElement('canvas')
-        const outputScale = window.devicePixelRatio || 1
+        const outputScale = getSafeOutputScale(viewport.width, viewport.height)
         canvas.width = Math.floor(viewport.width * outputScale)
         canvas.height = Math.floor(viewport.height * outputScale)
         canvas.style.width = `${Math.floor(viewport.width)}px`
         canvas.style.height = `${Math.floor(viewport.height)}px`
+        canvas.style.backgroundColor = '#fff'
         canvas.className = 'block'
+        const ctx = canvas.getContext('2d', { alpha: false })
+        if (!ctx) throw new Error('Canvas 2D context is unavailable')
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
 
         const textLayerDiv = document.createElement('div')
         textLayerDiv.className = 'textLayer'
@@ -242,22 +303,31 @@ export default function PdfViewer({
         wrapper.replaceChildren(canvas, textLayerDiv)
 
         const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined
-        const task = page.render({ canvas, viewport, transform })
+        const task = page.render({ canvas, viewport, transform, background: '#fff' })
         renderTasks.set(n, task)
         await task.promise
         if (cancelled) return
 
-        const textLayer = new TextLayer({
-          textContentSource: page.streamTextContent(),
-          container: textLayerDiv,
-          viewport,
-        })
-        await textLayer.render()
-        if (cancelled) return
-        applyHighlights(textLayerDiv, savedWordsRef.current)
-        textLayers.set(n, textLayerDiv)
+        try {
+          const textLayer = new TextLayer({
+            textContentSource: page.streamTextContent(),
+            container: textLayerDiv,
+            viewport,
+          })
+          await textLayer.render()
+          if (cancelled) return
+          applyHighlights(textLayerDiv, savedWordsRef.current)
+          textLayers.set(n, textLayerDiv)
+        } catch (err) {
+          console.warn(`PDF text layer render failed on page ${n}`, err)
+        }
         page.cleanup()
-      } catch {
+      } catch (err) {
+        if (!cancelled) {
+          console.error(`PDF page ${n} render failed`, err)
+          const wrapper = wrappers.get(n)
+          wrapper?.replaceChildren(pageErrorNode(scroller.ownerDocument, n))
+        }
         rendered.delete(n) // 失败允许重试
       }
     }
@@ -315,7 +385,9 @@ export default function PdfViewer({
       const base = first.getViewport({ scale: 1 })
       baseW = base.width
       baseH = base.height
-      const avail = Math.max(320, scroller.clientWidth - 48) // 留出左右内边距
+      const pagePadding =
+        scroller.clientWidth < 640 ? 16 : scroller.clientWidth < 1400 ? 32 : 48
+      const avail = Math.max(280, scroller.clientWidth - pagePadding) // 留出左右内边距
       scale = Math.min(avail / baseW, 2.5)
       first.cleanup()
 
@@ -369,7 +441,7 @@ export default function PdfViewer({
       buildOutline()
 
       // 续读定位
-      const startPage = parsePage(initialLocation)
+      const startPage = lastPageRef.current > 1 ? lastPageRef.current : parsePage(initialLocation)
       if (startPage && startPage > 1) {
         requestAnimationFrame(() => {
           if (!cancelled) scrollToPage(startPage)
@@ -403,7 +475,12 @@ export default function PdfViewer({
     }
     scroller.addEventListener('pointerup', onPointerUp)
 
-    init().catch(console.error)
+    init().catch(err => {
+      if (!cancelled) {
+        console.error('PDF load failed', err)
+        setLoadError('PDF 加载失败。请确认文件有效，或换一个浏览器重试。')
+      }
+    })
 
     return () => {
       cancelled = true
@@ -425,10 +502,15 @@ export default function PdfViewer({
       if (pdf) pdf.loadingTask.destroy()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data])
+  }, [data, containerWidth])
 
   return (
     <div ref={scrollRef} className="w-full h-full overflow-auto bg-[#ece5d8]">
+      {loadError && (
+        <div className="m-4 rounded-xl bg-white border border-amber-200 px-5 py-4 text-sm text-amber-800 shadow-sm">
+          {loadError}
+        </div>
+      )}
       <div ref={pagesRef} className="py-4" />
     </div>
   )
